@@ -46,14 +46,15 @@
 #include <algorithm>
 #include <iterator>
 #include <limits>
+#include <iostream>
 
 namespace cv
 {
 
-int RANSACUpdateNumIters( double p, double ep, int modelPoints, int maxIters )
+int RANSACUpdateNumIters(double p, double ep, int modelPoints, int maxIters)
 {
-    if( modelPoints <= 0 )
-        CV_Error( Error::StsOutOfRange, "the number of model points should be positive" );
+    if (modelPoints <= 0)
+        CV_Error(Error::StsOutOfRange, "the number of model points should be positive");
 
     p = MAX(p, 0.);
     p = MIN(p, 1.);
@@ -63,34 +64,33 @@ int RANSACUpdateNumIters( double p, double ep, int modelPoints, int maxIters )
     // avoid inf's & nan's
     double num = MAX(1. - p, DBL_MIN);
     double denom = 1. - std::pow(1. - ep, modelPoints);
-    if( denom < DBL_MIN )
+    if (denom < DBL_MIN)
         return 0;
 
     num = std::log(num);
     denom = std::log(denom);
 
-    return denom >= 0 || -num >= maxIters*(-denom) ? maxIters : cvRound(num/denom);
+    return denom >= 0 || -num >= maxIters * (-denom) ? maxIters : cvRound(num / denom);
 }
-
 
 class RANSACPointSetRegistrator : public PointSetRegistrator
 {
 public:
-    RANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& _cb=Ptr<PointSetRegistrator::Callback>(),
-                              int _modelPoints=0, double _threshold=0, double _confidence=0.99, int _maxIters=1000)
-      : cb(_cb), modelPoints(_modelPoints), threshold(_threshold), confidence(_confidence), maxIters(_maxIters) {}
+    RANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback> &_cb = Ptr<PointSetRegistrator::Callback>(),
+                              int _modelPoints = 0, double _threshold = 0, double _confidence = 0.99, int _maxIters = 1000, uint64_t _seed = (uint64)-1)
+        : cb(_cb), modelPoints(_modelPoints), threshold(_threshold), confidence(_confidence), maxIters(_maxIters), seed(_seed) {}
 
-    int findInliers( const Mat& m1, const Mat& m2, const Mat& model, Mat& err, Mat& mask, double thresh ) const
+    int findInliers(const Mat &m1, const Mat &m2, const Mat &model, Mat &err, Mat &mask, double thresh) const
     {
-        cb->computeError( m1, m2, model, err );
+        cb->computeError(m1, m2, model, err);
         mask.create(err.size(), CV_8U);
 
-        CV_Assert( err.isContinuous() && err.type() == CV_32F && mask.isContinuous() && mask.type() == CV_8U);
-        const float* errptr = err.ptr<float>();
-        uchar* maskptr = mask.ptr<uchar>();
-        float t = (float)(thresh*thresh);
+        CV_Assert(err.isContinuous() && err.type() == CV_32F && mask.isContinuous() && mask.type() == CV_8U);
+        const float *errptr = err.ptr<float>();
+        uchar *maskptr = mask.ptr<uchar>();
+        float t = (float)(thresh * thresh);
         int i, n = (int)err.total(), nz = 0;
-        for( i = 0; i < n; i++ )
+        for (i = 0; i < n; i++)
         {
             int f = errptr[i] <= t;
             maskptr[i] = (uchar)f;
@@ -99,10 +99,10 @@ public:
         return nz;
     }
 
-    bool getSubset( const Mat& m1, const Mat& m2, Mat& ms1, Mat& ms2, RNG& rng, int maxAttempts=1000 ) const
+    bool getSubset(const Mat &m1, const Mat &m2, Mat &ms1, Mat &ms2, RNG &rng, int maxAttempts = 1000) const
     {
         cv::AutoBuffer<int> _idx(modelPoints);
-        int* idx = _idx.data();
+        int *idx = _idx.data();
 
         const int d1 = m1.channels() > 1 ? m1.channels() : m1.cols;
         const int d2 = m2.channels() > 1 ? m2.channels() : m2.cols;
@@ -126,29 +126,30 @@ public:
         int *ms1ptr = ms1.ptr<int>();
         int *ms2ptr = ms2.ptr<int>();
 
-        for( int iters = 0; iters < maxAttempts; ++iters )
+        for (int iters = 0; iters < maxAttempts; ++iters)
         {
             int i;
 
-            for( i = 0; i < modelPoints; ++i )
+            for (i = 0; i < modelPoints; ++i)
             {
                 int idx_i;
 
-                for ( idx_i = rng.uniform(0, count);
-                    std::find(idx, idx + i, idx_i) != idx + i;
-                    idx_i = rng.uniform(0, count) )
-                {}
+                for (idx_i = rng.uniform(0, count);
+                     std::find(idx, idx + i, idx_i) != idx + i;
+                     idx_i = rng.uniform(0, count))
+                {
+                }
 
                 idx[i] = idx_i;
 
-                for( int k = 0; k < esz1; ++k )
-                    ms1ptr[i*esz1 + k] = m1ptr[idx_i*esz1 + k];
+                for (int k = 0; k < esz1; ++k)
+                    ms1ptr[i * esz1 + k] = m1ptr[idx_i * esz1 + k];
 
-                for( int k = 0; k < esz2; ++k )
-                    ms2ptr[i*esz2 + k] = m2ptr[idx_i*esz2 + k];
+                for (int k = 0; k < esz2; ++k)
+                    ms2ptr[i * esz2 + k] = m2ptr[idx_i * esz2 + k];
             }
 
-            if( cb->checkSubset(ms1, ms2, i) )
+            if (cb->checkSubset(ms1, ms2, i))
                 return true;
         }
 
@@ -157,6 +158,8 @@ public:
 
     bool run(InputArray _m1, InputArray _m2, OutputArray _model, OutputArray _mask) const CV_OVERRIDE
     {
+        std::cout << "*** Info: Running RANSAC with maxIters = " << maxIters << ", seed = " << seed << " ***" << std::endl;
+
         bool result = false;
         Mat m1 = _m1.getMat(), m2 = _m2.getMat();
         Mat err, mask, model, bestModel, ms1, ms2;
@@ -166,22 +169,22 @@ public:
         int d2 = m2.channels() > 1 ? m2.channels() : m2.cols;
         int count = m1.checkVector(d1), count2 = m2.checkVector(d2), maxGoodCount = 0;
 
-        RNG rng((uint64)-1);
+        RNG rng(seed);
 
-        CV_Assert( cb );
-        CV_Assert( confidence > 0 && confidence < 1 );
+        CV_Assert(cb);
+        CV_Assert(confidence > 0 && confidence < 1);
 
-        CV_Assert( count >= 0 && count2 == count );
-        if( count < modelPoints )
+        CV_Assert(count >= 0 && count2 == count);
+        if (count < modelPoints)
             return false;
 
         Mat bestMask0, bestMask;
 
-        if( _mask.needed() )
+        if (_mask.needed())
         {
             _mask.create(count, 1, CV_8U, -1, true);
             bestMask0 = bestMask = _mask.getMat();
-            CV_Assert( (bestMask.cols == 1 || bestMask.rows == 1) && (int)bestMask.total() == count );
+            CV_Assert((bestMask.cols == 1 || bestMask.rows == 1) && (int)bestMask.total() == count);
         }
         else
         {
@@ -189,55 +192,55 @@ public:
             bestMask0 = bestMask;
         }
 
-        if( count == modelPoints )
+        if (count == modelPoints)
         {
-            if( cb->runKernel(m1, m2, bestModel) <= 0 )
+            if (cb->runKernel(m1, m2, bestModel) <= 0)
                 return false;
             bestModel.copyTo(_model);
             bestMask.setTo(Scalar::all(1));
             return true;
         }
 
-        for( iter = 0; iter < niters; iter++ )
+        for (iter = 0; iter < niters; iter++)
         {
             int i, nmodels;
-            if( count > modelPoints )
+            if (count > modelPoints)
             {
-                bool found = getSubset( m1, m2, ms1, ms2, rng, 10000 );
-                if( !found )
+                bool found = getSubset(m1, m2, ms1, ms2, rng, 10000);
+                if (!found)
                 {
-                    if( iter == 0 )
+                    if (iter == 0)
                         return false;
                     break;
                 }
             }
 
-            nmodels = cb->runKernel( ms1, ms2, model );
-            if( nmodels <= 0 )
+            nmodels = cb->runKernel(ms1, ms2, model);
+            if (nmodels <= 0)
                 continue;
-            CV_Assert( model.rows % nmodels == 0 );
-            Size modelSize(model.cols, model.rows/nmodels);
+            CV_Assert(model.rows % nmodels == 0);
+            Size modelSize(model.cols, model.rows / nmodels);
 
-            for( i = 0; i < nmodels; i++ )
+            for (i = 0; i < nmodels; i++)
             {
-                Mat model_i = model.rowRange( i*modelSize.height, (i+1)*modelSize.height );
-                int goodCount = findInliers( m1, m2, model_i, err, mask, threshold );
+                Mat model_i = model.rowRange(i * modelSize.height, (i + 1) * modelSize.height);
+                int goodCount = findInliers(m1, m2, model_i, err, mask, threshold);
 
-                if( goodCount > MAX(maxGoodCount, modelPoints-1) )
+                if (goodCount > MAX(maxGoodCount, modelPoints - 1))
                 {
                     std::swap(mask, bestMask);
                     model_i.copyTo(bestModel);
                     maxGoodCount = goodCount;
-                    niters = RANSACUpdateNumIters( confidence, (double)(count - goodCount)/count, modelPoints, niters );
+                    niters = RANSACUpdateNumIters(confidence, (double)(count - goodCount) / count, modelPoints, niters);
                 }
             }
         }
 
-        if( maxGoodCount > 0 )
+        if (maxGoodCount > 0)
         {
-            if( bestMask.data != bestMask0.data )
+            if (bestMask.data != bestMask0.data)
             {
-                if( bestMask.size() == bestMask0.size() )
+                if (bestMask.size() == bestMask0.size())
                     bestMask.copyTo(bestMask0);
                 else
                     transpose(bestMask, bestMask0);
@@ -251,21 +254,22 @@ public:
         return result;
     }
 
-    void setCallback(const Ptr<PointSetRegistrator::Callback>& _cb) CV_OVERRIDE { cb = _cb; }
+    void setCallback(const Ptr<PointSetRegistrator::Callback> &_cb) CV_OVERRIDE { cb = _cb; }
 
     Ptr<PointSetRegistrator::Callback> cb;
     int modelPoints;
     double threshold;
     double confidence;
     int maxIters;
+    uint64_t seed;
 };
 
 class LMeDSPointSetRegistrator : public RANSACPointSetRegistrator
 {
 public:
-    LMeDSPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& _cb=Ptr<PointSetRegistrator::Callback>(),
-                              int _modelPoints=0, double _confidence=0.99, int _maxIters=1000)
-    : RANSACPointSetRegistrator(_cb, _modelPoints, 0, _confidence, _maxIters) {}
+    LMeDSPointSetRegistrator(const Ptr<PointSetRegistrator::Callback> &_cb = Ptr<PointSetRegistrator::Callback>(),
+                             int _modelPoints = 0, double _confidence = 0.99, int _maxIters = 1000)
+        : RANSACPointSetRegistrator(_cb, _modelPoints, 0, _confidence, _maxIters) {}
 
     bool run(InputArray _m1, InputArray _m2, OutputArray _model, OutputArray _mask) const CV_OVERRIDE
     {
@@ -281,23 +285,23 @@ public:
 
         RNG rng((uint64)-1);
 
-        CV_Assert( cb );
-        CV_Assert( confidence > 0 && confidence < 1 );
+        CV_Assert(cb);
+        CV_Assert(confidence > 0 && confidence < 1);
 
-        CV_Assert( count >= 0 && count2 == count );
-        if( count < modelPoints )
+        CV_Assert(count >= 0 && count2 == count);
+        if (count < modelPoints)
             return false;
 
-        if( _mask.needed() )
+        if (_mask.needed())
         {
             _mask.create(count, 1, CV_8U, -1, true);
             mask0 = mask = _mask.getMat();
-            CV_Assert( (mask.cols == 1 || mask.rows == 1) && (int)mask.total() == count );
+            CV_Assert((mask.cols == 1 || mask.rows == 1) && (int)mask.total() == count);
         }
 
-        if( count == modelPoints )
+        if (count == modelPoints)
         {
-            if( cb->runKernel(m1, m2, bestModel) <= 0 )
+            if (cb->runKernel(m1, m2, bestModel) <= 0)
                 return false;
             bestModel.copyTo(_model);
             mask.setTo(Scalar::all(1));
@@ -307,40 +311,40 @@ public:
         int iter, niters = RANSACUpdateNumIters(confidence, outlierRatio, modelPoints, maxIters);
         niters = MAX(niters, 3);
 
-        for( iter = 0; iter < niters; iter++ )
+        for (iter = 0; iter < niters; iter++)
         {
             int i, nmodels;
-            if( count > modelPoints )
+            if (count > modelPoints)
             {
-                bool found = getSubset( m1, m2, ms1, ms2, rng );
-                if( !found )
+                bool found = getSubset(m1, m2, ms1, ms2, rng);
+                if (!found)
                 {
-                    if( iter == 0 )
+                    if (iter == 0)
                         return false;
                     break;
                 }
             }
 
-            nmodels = cb->runKernel( ms1, ms2, model );
-            if( nmodels <= 0 )
+            nmodels = cb->runKernel(ms1, ms2, model);
+            if (nmodels <= 0)
                 continue;
 
-            CV_Assert( model.rows % nmodels == 0 );
-            Size modelSize(model.cols, model.rows/nmodels);
+            CV_Assert(model.rows % nmodels == 0);
+            Size modelSize(model.cols, model.rows / nmodels);
 
-            for( i = 0; i < nmodels; i++ )
+            for (i = 0; i < nmodels; i++)
             {
-                Mat model_i = model.rowRange( i*modelSize.height, (i+1)*modelSize.height );
-                cb->computeError( m1, m2, model_i, err );
-                if( err.depth() != CV_32F )
+                Mat model_i = model.rowRange(i * modelSize.height, (i + 1) * modelSize.height);
+                cb->computeError(m1, m2, model_i, err);
+                if (err.depth() != CV_32F)
                     err.convertTo(errf, CV_32F);
                 else
                     errf = err;
-                CV_Assert( errf.isContinuous() && errf.type() == CV_32F && (int)errf.total() == count );
-                std::nth_element(errf.ptr<int>(), errf.ptr<int>() + count/2, errf.ptr<int>() + count);
-                double median = errf.at<float>(count/2);
+                CV_Assert(errf.isContinuous() && errf.type() == CV_32F && (int)errf.total() == count);
+                std::nth_element(errf.ptr<int>(), errf.ptr<int>() + count / 2, errf.ptr<int>() + count);
+                double median = errf.at<float>(count / 2);
 
-                if( median < minMedian )
+                if (median < minMedian)
                 {
                     minMedian = median;
                     model_i.copyTo(bestModel);
@@ -348,15 +352,15 @@ public:
             }
         }
 
-        if( minMedian < DBL_MAX )
+        if (minMedian < DBL_MAX)
         {
-            double sigma = 2.5*1.4826*(1 + 5./(count - modelPoints))*std::sqrt(minMedian);
-            sigma = MAX( sigma, 0.001 );
+            double sigma = 2.5 * 1.4826 * (1 + 5. / (count - modelPoints)) * std::sqrt(minMedian);
+            sigma = MAX(sigma, 0.001);
 
-            count = findInliers( m1, m2, bestModel, err, mask, sigma );
-            if( _mask.needed() && mask0.data != mask.data )
+            count = findInliers(m1, m2, bestModel, err, mask, sigma);
+            if (_mask.needed() && mask0.data != mask.data)
             {
-                if( mask0.size() == mask.size() )
+                if (mask0.size() == mask.size())
                     mask.copyTo(mask0);
                 else
                     transpose(mask, mask0);
@@ -369,25 +373,22 @@ public:
 
         return result;
     }
-
 };
 
-Ptr<PointSetRegistrator> createRANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& _cb,
+Ptr<PointSetRegistrator> createRANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback> &_cb,
                                                          int _modelPoints, double _threshold,
-                                                         double _confidence, int _maxIters)
+                                                         double _confidence, int _maxIters, uint64_t _seed)
 {
     return Ptr<PointSetRegistrator>(
-        new RANSACPointSetRegistrator(_cb, _modelPoints, _threshold, _confidence, _maxIters));
+        new RANSACPointSetRegistrator(_cb, _modelPoints, _threshold, _confidence, _maxIters, _seed));
 }
 
-
-Ptr<PointSetRegistrator> createLMeDSPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& _cb,
-                             int _modelPoints, double _confidence, int _maxIters)
+Ptr<PointSetRegistrator> createLMeDSPointSetRegistrator(const Ptr<PointSetRegistrator::Callback> &_cb,
+                                                        int _modelPoints, double _confidence, int _maxIters)
 {
     return Ptr<PointSetRegistrator>(
         new LMeDSPointSetRegistrator(_cb, _modelPoints, _confidence, _maxIters));
 }
-
 
 /*
  * Compute
@@ -405,29 +406,29 @@ Ptr<PointSetRegistrator> createLMeDSPointSetRegistrator(const Ptr<PointSetRegist
 class Affine3DEstimatorCallback : public PointSetRegistrator::Callback
 {
 public:
-    int runKernel( InputArray _m1, InputArray _m2, OutputArray _model ) const CV_OVERRIDE
+    int runKernel(InputArray _m1, InputArray _m2, OutputArray _model) const CV_OVERRIDE
     {
         Mat m1 = _m1.getMat(), m2 = _m2.getMat();
-        const Point3f* from = m1.ptr<Point3f>();
-        const Point3f* to   = m2.ptr<Point3f>();
+        const Point3f *from = m1.ptr<Point3f>();
+        const Point3f *to = m2.ptr<Point3f>();
 
         const int N = 12;
-        double buf[N*N + N + N];
+        double buf[N * N + N + N];
         Mat A(N, N, CV_64F, &buf[0]);
-        Mat B(N, 1, CV_64F, &buf[0] + N*N);
-        Mat X(N, 1, CV_64F, &buf[0] + N*N + N);
-        double* Adata = A.ptr<double>();
-        double* Bdata = B.ptr<double>();
+        Mat B(N, 1, CV_64F, &buf[0] + N * N);
+        Mat X(N, 1, CV_64F, &buf[0] + N * N + N);
+        double *Adata = A.ptr<double>();
+        double *Bdata = B.ptr<double>();
         A = Scalar::all(0);
 
-        for( int i = 0; i < (N/3); i++ )
+        for (int i = 0; i < (N / 3); i++)
         {
-            Bdata[i*3] = to[i].x;
-            Bdata[i*3+1] = to[i].y;
-            Bdata[i*3+2] = to[i].z;
+            Bdata[i * 3] = to[i].x;
+            Bdata[i * 3 + 1] = to[i].y;
+            Bdata[i * 3 + 2] = to[i].z;
 
-            double *aptr = Adata + i*3*N;
-            for(int k = 0; k < 3; ++k)
+            double *aptr = Adata + i * 3 * N;
+            for (int k = 0; k < 3; ++k)
             {
                 aptr[0] = from[i].x;
                 aptr[1] = from[i].y;
@@ -443,60 +444,60 @@ public:
         return 1;
     }
 
-    void computeError( InputArray _m1, InputArray _m2, InputArray _model, OutputArray _err ) const CV_OVERRIDE
+    void computeError(InputArray _m1, InputArray _m2, InputArray _model, OutputArray _err) const CV_OVERRIDE
     {
         Mat m1 = _m1.getMat(), m2 = _m2.getMat(), model = _model.getMat();
-        const Point3f* from = m1.ptr<Point3f>();
-        const Point3f* to   = m2.ptr<Point3f>();
-        const double* F = model.ptr<double>();
+        const Point3f *from = m1.ptr<Point3f>();
+        const Point3f *to = m2.ptr<Point3f>();
+        const double *F = model.ptr<double>();
 
         int count = m1.checkVector(3);
-        CV_Assert( count > 0 );
+        CV_Assert(count > 0);
 
         _err.create(count, 1, CV_32F);
         Mat err = _err.getMat();
-        float* errptr = err.ptr<float>();
+        float *errptr = err.ptr<float>();
 
-        for(int i = 0; i < count; i++ )
+        for (int i = 0; i < count; i++)
         {
-            const Point3f& f = from[i];
-            const Point3f& t = to[i];
+            const Point3f &f = from[i];
+            const Point3f &t = to[i];
 
-            double a = F[0]*f.x + F[1]*f.y + F[ 2]*f.z + F[ 3] - t.x;
-            double b = F[4]*f.x + F[5]*f.y + F[ 6]*f.z + F[ 7] - t.y;
-            double c = F[8]*f.x + F[9]*f.y + F[10]*f.z + F[11] - t.z;
+            double a = F[0] * f.x + F[1] * f.y + F[2] * f.z + F[3] - t.x;
+            double b = F[4] * f.x + F[5] * f.y + F[6] * f.z + F[7] - t.y;
+            double c = F[8] * f.x + F[9] * f.y + F[10] * f.z + F[11] - t.z;
 
-            errptr[i] = (float)(a*a + b*b + c*c);
+            errptr[i] = (float)(a * a + b * b + c * c);
         }
     }
 
-    bool checkSubset( InputArray _ms1, InputArray _ms2, int count ) const CV_OVERRIDE
+    bool checkSubset(InputArray _ms1, InputArray _ms2, int count) const CV_OVERRIDE
     {
         const float threshold = 0.996f;
         Mat ms1 = _ms1.getMat(), ms2 = _ms2.getMat();
 
-        for( int inp = 1; inp <= 2; inp++ )
+        for (int inp = 1; inp <= 2; inp++)
         {
             int j, k, i = count - 1;
-            const Mat* msi = inp == 1 ? &ms1 : &ms2;
-            const Point3f* ptr = msi->ptr<Point3f>();
+            const Mat *msi = inp == 1 ? &ms1 : &ms2;
+            const Point3f *ptr = msi->ptr<Point3f>();
 
-            CV_Assert( count <= msi->rows );
+            CV_Assert(count <= msi->rows);
 
             // check that the i-th selected point does not belong
             // to a line connecting some previously selected points
-            for(j = 0; j < i; ++j)
+            for (j = 0; j < i; ++j)
             {
                 Point3f d1 = ptr[j] - ptr[i];
-                float n1 = d1.x*d1.x + d1.y*d1.y;
+                float n1 = d1.x * d1.x + d1.y * d1.y;
 
-                for(k = 0; k < j; ++k)
+                for (k = 0; k < j; ++k)
                 {
                     Point3f d2 = ptr[k] - ptr[i];
-                    float denom = (d2.x*d2.x + d2.y*d2.y)*n1;
-                    float num = d1.x*d2.x + d1.y*d2.y;
+                    float denom = (d2.x * d2.x + d2.y * d2.y) * n1;
+                    float num = d1.x * d2.x + d1.y * d2.y;
 
-                    if( num*num > threshold*threshold*denom )
+                    if (num * num > threshold * threshold * denom)
                         return false;
                 }
             }
@@ -520,11 +521,11 @@ public:
 class Affine2DEstimatorCallback : public PointSetRegistrator::Callback
 {
 public:
-    int runKernel( InputArray _m1, InputArray _m2, OutputArray _model ) const CV_OVERRIDE
+    int runKernel(InputArray _m1, InputArray _m2, OutputArray _model) const CV_OVERRIDE
     {
         Mat m1 = _m1.getMat(), m2 = _m2.getMat();
-        const Point2f* from = m1.ptr<Point2f>();
-        const Point2f* to   = m2.ptr<Point2f>();
+        const Point2f *from = m1.ptr<Point2f>();
+        const Point2f *to = m2.ptr<Point2f>();
         _model.create(2, 3, CV_64F);
         Mat M_mat = _model.getMat();
         double *M = M_mat.ptr<double>();
@@ -568,48 +569,48 @@ public:
         | Y3 |   | x3 y3 1 |   | f |
         */
 
-        double d = 1. / ( x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2) );
+        double d = 1. / (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2));
 
-        M[0] = d * ( X1*(y2-y3) + X2*(y3-y1) + X3*(y1-y2) );
-        M[1] = d * ( X1*(x3-x2) + X2*(x1-x3) + X3*(x2-x1) );
-        M[2] = d * ( X1*(x2*y3 - x3*y2) + X2*(x3*y1 - x1*y3) + X3*(x1*y2 - x2*y1) );
+        M[0] = d * (X1 * (y2 - y3) + X2 * (y3 - y1) + X3 * (y1 - y2));
+        M[1] = d * (X1 * (x3 - x2) + X2 * (x1 - x3) + X3 * (x2 - x1));
+        M[2] = d * (X1 * (x2 * y3 - x3 * y2) + X2 * (x3 * y1 - x1 * y3) + X3 * (x1 * y2 - x2 * y1));
 
-        M[3] = d * ( Y1*(y2-y3) + Y2*(y3-y1) + Y3*(y1-y2) );
-        M[4] = d * ( Y1*(x3-x2) + Y2*(x1-x3) + Y3*(x2-x1) );
-        M[5] = d * ( Y1*(x2*y3 - x3*y2) + Y2*(x3*y1 - x1*y3) + Y3*(x1*y2 - x2*y1) );
+        M[3] = d * (Y1 * (y2 - y3) + Y2 * (y3 - y1) + Y3 * (y1 - y2));
+        M[4] = d * (Y1 * (x3 - x2) + Y2 * (x1 - x3) + Y3 * (x2 - x1));
+        M[5] = d * (Y1 * (x2 * y3 - x3 * y2) + Y2 * (x3 * y1 - x1 * y3) + Y3 * (x1 * y2 - x2 * y1));
         return 1;
     }
 
-    void computeError( InputArray _m1, InputArray _m2, InputArray _model, OutputArray _err ) const CV_OVERRIDE
+    void computeError(InputArray _m1, InputArray _m2, InputArray _model, OutputArray _err) const CV_OVERRIDE
     {
         Mat m1 = _m1.getMat(), m2 = _m2.getMat(), model = _model.getMat();
-        const Point2f* from = m1.ptr<Point2f>();
-        const Point2f* to   = m2.ptr<Point2f>();
-        const double* F = model.ptr<double>();
+        const Point2f *from = m1.ptr<Point2f>();
+        const Point2f *to = m2.ptr<Point2f>();
+        const double *F = model.ptr<double>();
 
         int count = m1.checkVector(2);
-        CV_Assert( count > 0 );
+        CV_Assert(count > 0);
 
         _err.create(count, 1, CV_32F);
         Mat err = _err.getMat();
-        float* errptr = err.ptr<float>();
+        float *errptr = err.ptr<float>();
         // transform matrix to floats
         float F0 = (float)F[0], F1 = (float)F[1], F2 = (float)F[2];
         float F3 = (float)F[3], F4 = (float)F[4], F5 = (float)F[5];
 
-        for(int i = 0; i < count; i++ )
+        for (int i = 0; i < count; i++)
         {
-            const Point2f& f = from[i];
-            const Point2f& t = to[i];
+            const Point2f &f = from[i];
+            const Point2f &t = to[i];
 
-            float a = F0*f.x + F1*f.y + F2 - t.x;
-            float b = F3*f.x + F4*f.y + F5 - t.y;
+            float a = F0 * f.x + F1 * f.y + F2 - t.x;
+            float b = F3 * f.x + F4 * f.y + F5 - t.y;
 
-            errptr[i] = a*a + b*b;
+            errptr[i] = a * a + b * b;
         }
     }
 
-    bool checkSubset( InputArray _ms1, InputArray _ms2, int count ) const CV_OVERRIDE
+    bool checkSubset(InputArray _ms1, InputArray _ms2, int count) const CV_OVERRIDE
     {
         Mat ms1 = _ms1.getMat();
         Mat ms2 = _ms2.getMat();
@@ -633,11 +634,11 @@ public:
 class AffinePartial2DEstimatorCallback : public Affine2DEstimatorCallback
 {
 public:
-    int runKernel( InputArray _m1, InputArray _m2, OutputArray _model ) const CV_OVERRIDE
+    int runKernel(InputArray _m1, InputArray _m2, OutputArray _model) const CV_OVERRIDE
     {
         Mat m1 = _m1.getMat(), m2 = _m2.getMat();
-        const Point2f* from = m1.ptr<Point2f>();
-        const Point2f* to   = m2.ptr<Point2f>();
+        const Point2f *from = m1.ptr<Point2f>();
+        const Point2f *to = m2.ptr<Point2f>();
         _model.create(2, 3, CV_64F);
         Mat M_mat = _model.getMat();
         double *M = M_mat.ptr<double>();
@@ -662,13 +663,13 @@ public:
         B = (X1, Y1, X2, Y2).t()
         we solve that analytically
         */
-        double d = 1./((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
+        double d = 1. / ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 
         // solution vector
-        double S0 = d * ( (X1-X2)*(x1-x2) + (Y1-Y2)*(y1-y2) );
-        double S1 = d * ( (Y1-Y2)*(x1-x2) - (X1-X2)*(y1-y2) );
-        double S2 = d * ( (Y1-Y2)*(x1*y2 - x2*y1) - (X1*y2 - X2*y1)*(y1-y2) - (X1*x2 - X2*x1)*(x1-x2) );
-        double S3 = d * (-(X1-X2)*(x1*y2 - x2*y1) - (Y1*x2 - Y2*x1)*(x1-x2) - (Y1*y2 - Y2*y1)*(y1-y2) );
+        double S0 = d * ((X1 - X2) * (x1 - x2) + (Y1 - Y2) * (y1 - y2));
+        double S1 = d * ((Y1 - Y2) * (x1 - x2) - (X1 - X2) * (y1 - y2));
+        double S2 = d * ((Y1 - Y2) * (x1 * y2 - x2 * y1) - (X1 * y2 - X2 * y1) * (y1 - y2) - (X1 * x2 - X2 * x1) * (x1 - x2));
+        double S3 = d * (-(X1 - X2) * (x1 * y2 - x2 * y1) - (Y1 * x2 - Y2 * x1) * (x1 - x2) - (Y1 * y2 - Y2 * y1) * (y1 - y2));
 
         // set model, rotation part is antisymmetric
         M[0] = M[4] = S0;
@@ -693,42 +694,46 @@ public:
     {
         int i, count = src.checkVector(2);
         Mat param = _param.getMat();
-        _err.create(count*2, 1, CV_64F);
+        _err.create(count * 2, 1, CV_64F);
         Mat err = _err.getMat(), J;
-        if( _Jac.needed())
+        if (_Jac.needed())
         {
-            _Jac.create(count*2, param.rows, CV_64F);
+            _Jac.create(count * 2, param.rows, CV_64F);
             J = _Jac.getMat();
-            CV_Assert( J.isContinuous() && J.cols == 6 );
+            CV_Assert(J.isContinuous() && J.cols == 6);
         }
 
-        const Point2f* M = src.ptr<Point2f>();
-        const Point2f* m = dst.ptr<Point2f>();
-        const double* h = param.ptr<double>();
-        double* errptr = err.ptr<double>();
-        double* Jptr = J.data ? J.ptr<double>() : 0;
+        const Point2f *M = src.ptr<Point2f>();
+        const Point2f *m = dst.ptr<Point2f>();
+        const double *h = param.ptr<double>();
+        double *errptr = err.ptr<double>();
+        double *Jptr = J.data ? J.ptr<double>() : 0;
 
-        for( i = 0; i < count; i++ )
+        for (i = 0; i < count; i++)
         {
             double Mx = M[i].x, My = M[i].y;
-            double xi = h[0]*Mx + h[1]*My + h[2];
-            double yi = h[3]*Mx + h[4]*My + h[5];
-            errptr[i*2] = xi - m[i].x;
-            errptr[i*2+1] = yi - m[i].y;
+            double xi = h[0] * Mx + h[1] * My + h[2];
+            double yi = h[3] * Mx + h[4] * My + h[5];
+            errptr[i * 2] = xi - m[i].x;
+            errptr[i * 2 + 1] = yi - m[i].y;
 
             /*
             Jacobian should be:
                 {x, y, 1, 0, 0, 0}
                 {0, 0, 0, x, y, 1}
             */
-            if( Jptr )
+            if (Jptr)
             {
-                Jptr[0] = Mx; Jptr[1] = My; Jptr[2] = 1.;
+                Jptr[0] = Mx;
+                Jptr[1] = My;
+                Jptr[2] = 1.;
                 Jptr[3] = Jptr[4] = Jptr[5] = 0.;
                 Jptr[6] = Jptr[7] = Jptr[8] = 0.;
-                Jptr[9] = Mx; Jptr[10] = My; Jptr[11] = 1.;
+                Jptr[9] = Mx;
+                Jptr[10] = My;
+                Jptr[11] = 1.;
 
-                Jptr += 6*2;
+                Jptr += 6 * 2;
             }
         }
 
@@ -751,40 +756,46 @@ public:
     {
         int i, count = src.checkVector(2);
         Mat param = _param.getMat();
-        _err.create(count*2, 1, CV_64F);
+        _err.create(count * 2, 1, CV_64F);
         Mat err = _err.getMat(), J;
-        if( _Jac.needed())
+        if (_Jac.needed())
         {
-            _Jac.create(count*2, param.rows, CV_64F);
+            _Jac.create(count * 2, param.rows, CV_64F);
             J = _Jac.getMat();
-            CV_Assert( J.isContinuous() && J.cols == 4 );
+            CV_Assert(J.isContinuous() && J.cols == 4);
         }
 
-        const Point2f* M = src.ptr<Point2f>();
-        const Point2f* m = dst.ptr<Point2f>();
-        const double* h = param.ptr<double>();
-        double* errptr = err.ptr<double>();
-        double* Jptr = J.data ? J.ptr<double>() : 0;
+        const Point2f *M = src.ptr<Point2f>();
+        const Point2f *m = dst.ptr<Point2f>();
+        const double *h = param.ptr<double>();
+        double *errptr = err.ptr<double>();
+        double *Jptr = J.data ? J.ptr<double>() : 0;
 
-        for( i = 0; i < count; i++ )
+        for (i = 0; i < count; i++)
         {
             double Mx = M[i].x, My = M[i].y;
-            double xi = h[0]*Mx - h[1]*My + h[2];
-            double yi = h[1]*Mx + h[0]*My + h[3];
-            errptr[i*2] = xi - m[i].x;
-            errptr[i*2+1] = yi - m[i].y;
+            double xi = h[0] * Mx - h[1] * My + h[2];
+            double yi = h[1] * Mx + h[0] * My + h[3];
+            errptr[i * 2] = xi - m[i].x;
+            errptr[i * 2 + 1] = yi - m[i].y;
 
             /*
             Jacobian should be:
                 {x, -y, 1, 0}
                 {y,  x, 0, 1}
             */
-            if( Jptr )
+            if (Jptr)
             {
-                Jptr[0] = Mx; Jptr[1] = -My; Jptr[2] = 1.; Jptr[3] = 0.;
-                Jptr[4] = My; Jptr[5] =  Mx; Jptr[6] = 0.; Jptr[7] = 1.;
+                Jptr[0] = Mx;
+                Jptr[1] = -My;
+                Jptr[2] = 1.;
+                Jptr[3] = 0.;
+                Jptr[4] = My;
+                Jptr[5] = Mx;
+                Jptr[6] = 0.;
+                Jptr[7] = 1.;
 
-                Jptr += 4*2;
+                Jptr += 4 * 2;
             }
         }
 
@@ -803,7 +814,7 @@ int estimateAffine3D(InputArray _from, InputArray _to,
     Mat from = _from.getMat(), to = _to.getMat();
     int count = from.checkVector(3);
 
-    CV_Assert( count >= 0 && to.checkVector(3) == count );
+    CV_Assert(count >= 0 && to.checkVector(3) == count);
 
     Mat dFrom, dTo;
     from.convertTo(dFrom, CV_32F);
@@ -828,7 +839,7 @@ Mat estimateAffine2D(InputArray _from, InputArray _to, OutputArray _inliers,
     bool result = false;
     Mat H;
 
-    CV_Assert( count >= 0 && to.checkVector(2) == count );
+    CV_Assert(count >= 0 && to.checkVector(2) == count);
 
     if (from.type() != CV_32FC2 || to.type() != CV_32FC2)
     {
@@ -850,7 +861,7 @@ Mat estimateAffine2D(InputArray _from, InputArray _to, OutputArray _inliers,
     to = to.reshape(2, count);
 
     Mat inliers;
-    if(_inliers.needed())
+    if (_inliers.needed())
     {
         _inliers.create(count, 1, CV_8U, -1, true);
         inliers = _inliers.getMat();
@@ -858,19 +869,19 @@ Mat estimateAffine2D(InputArray _from, InputArray _to, OutputArray _inliers,
 
     // run robust method
     Ptr<PointSetRegistrator::Callback> cb = makePtr<Affine2DEstimatorCallback>();
-    if( method == RANSAC )
+    if (method == RANSAC)
         result = createRANSACPointSetRegistrator(cb, 3, ransacReprojThreshold, confidence, static_cast<int>(maxIters))->run(from, to, H, inliers);
-    else if( method == LMEDS )
+    else if (method == LMEDS)
         result = createLMeDSPointSetRegistrator(cb, 3, confidence, static_cast<int>(maxIters))->run(from, to, H, inliers);
     else
         CV_Error(Error::StsBadArg, "Unknown or unsupported robust estimation method");
 
-    if(result && count > 3 && refineIters)
+    if (result && count > 3 && refineIters)
     {
         // reorder to start with inliers
         compressElems(from.ptr<Point2f>(), inliers.ptr<uchar>(), 1, count);
         int inliers_count = compressElems(to.ptr<Point2f>(), inliers.ptr<uchar>(), 1, count);
-        if(inliers_count > 0)
+        if (inliers_count > 0)
         {
             Mat src = from.rowRange(0, inliers_count);
             Mat dst = to.rowRange(0, inliers_count);
@@ -882,7 +893,7 @@ Mat estimateAffine2D(InputArray _from, InputArray _to, OutputArray _inliers,
     if (!result)
     {
         H.release();
-        if(_inliers.needed())
+        if (_inliers.needed())
         {
             inliers = Mat::zeros(count, 1, CV_8U);
             inliers.copyTo(_inliers);
@@ -902,7 +913,7 @@ Mat estimateAffinePartial2D(InputArray _from, InputArray _to, OutputArray _inlie
     bool result = false;
     Mat H;
 
-    CV_Assert( count >= 0 && to.checkVector(2) == count );
+    CV_Assert(count >= 0 && to.checkVector(2) == count);
 
     if (from.type() != CV_32FC2 || to.type() != CV_32FC2)
     {
@@ -924,7 +935,7 @@ Mat estimateAffinePartial2D(InputArray _from, InputArray _to, OutputArray _inlie
     to = to.reshape(2, count);
 
     Mat inliers;
-    if(_inliers.needed())
+    if (_inliers.needed())
     {
         _inliers.create(count, 1, CV_8U, -1, true);
         inliers = _inliers.getMat();
@@ -932,19 +943,19 @@ Mat estimateAffinePartial2D(InputArray _from, InputArray _to, OutputArray _inlie
 
     // run robust estimation
     Ptr<PointSetRegistrator::Callback> cb = makePtr<AffinePartial2DEstimatorCallback>();
-    if( method == RANSAC )
+    if (method == RANSAC)
         result = createRANSACPointSetRegistrator(cb, 2, ransacReprojThreshold, confidence, static_cast<int>(maxIters))->run(from, to, H, inliers);
-    else if( method == LMEDS )
+    else if (method == LMEDS)
         result = createLMeDSPointSetRegistrator(cb, 2, confidence, static_cast<int>(maxIters))->run(from, to, H, inliers);
     else
         CV_Error(Error::StsBadArg, "Unknown or unsupported robust estimation method");
 
-    if(result && count > 2 && refineIters)
+    if (result && count > 2 && refineIters)
     {
         // reorder to start with inliers
         compressElems(from.ptr<Point2f>(), inliers.ptr<uchar>(), 1, count);
         int inliers_count = compressElems(to.ptr<Point2f>(), inliers.ptr<uchar>(), 1, count);
-        if(inliers_count > 0)
+        if (inliers_count > 0)
         {
             Mat src = from.rowRange(0, inliers_count);
             Mat dst = to.rowRange(0, inliers_count);
@@ -955,7 +966,7 @@ Mat estimateAffinePartial2D(InputArray _from, InputArray _to, OutputArray _inlie
             //     (a, b, tx, ty)
             double *Hptr = H.ptr<double>();
             double Hvec_buf[4] = {Hptr[0], Hptr[3], Hptr[2], Hptr[5]};
-            Mat Hvec (4, 1, CV_64F, Hvec_buf);
+            Mat Hvec(4, 1, CV_64F, Hvec_buf);
             createLMSolver(makePtr<AffinePartial2DRefineCallback>(src, dst), static_cast<int>(refineIters))->run(Hvec);
             // update H with refined parameters
             Hptr[0] = Hptr[4] = Hvec_buf[0];
@@ -969,7 +980,7 @@ Mat estimateAffinePartial2D(InputArray _from, InputArray _to, OutputArray _inlie
     if (!result)
     {
         H.release();
-        if(_inliers.needed())
+        if (_inliers.needed())
         {
             inliers = Mat::zeros(count, 1, CV_8U);
             inliers.copyTo(_inliers);

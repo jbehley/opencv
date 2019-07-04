@@ -1960,7 +1960,7 @@ decomposeEssentialMat or recoverPose to recover the relative pose between camera
 CV_EXPORTS_W Mat findEssentialMat( InputArray points1, InputArray points2,
                                  InputArray cameraMatrix, int method = RANSAC,
                                  double prob = 0.999, double threshold = 1.0,
-                                 OutputArray mask = noArray() );
+                                 OutputArray mask = noArray(), int maxIters = 1000, uint64_t seed = (uint64_t)-1 );
 
 /** @overload
 @param points1 Array of N (N \>= 5) 2D points from the first image. The point coordinates should
@@ -1994,7 +1994,7 @@ f & 0 & x_{pp}  \\
 CV_EXPORTS_W Mat findEssentialMat( InputArray points1, InputArray points2,
                                  double focal = 1.0, Point2d pp = Point2d(0, 0),
                                  int method = RANSAC, double prob = 0.999,
-                                 double threshold = 1.0, OutputArray mask = noArray() );
+                                 double threshold = 1.0, OutputArray mask = noArray(), int maxIters = 1000, uint64_t seed = (uint64_t)-1 );
 
 /** @brief Decompose an essential matrix to possible rotations and translation.
 

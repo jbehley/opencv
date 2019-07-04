@@ -115,7 +115,7 @@ public:
 
 CV_EXPORTS Ptr<PointSetRegistrator> createRANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& cb,
                                                                     int modelPoints, double threshold,
-                                                                    double confidence=0.99, int maxIters=1000 );
+                                                                    double confidence=0.99, int maxIters=1000, uint64_t seed = (uint64)-1);
 
 CV_EXPORTS Ptr<PointSetRegistrator> createLMeDSPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& cb,
                                                                    int modelPoints, double confidence=0.99, int maxIters=1000 );
