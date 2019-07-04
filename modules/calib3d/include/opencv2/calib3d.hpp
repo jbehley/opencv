@@ -1947,6 +1947,9 @@ final fundamental matrix. It can be set to something like 1-3, depending on the 
 point localization, image resolution, and the image noise.
 @param mask Output array of N elements, every element of which is set to 0 for outliers and to 1
 for the other points. The array is computed only in the RANSAC and LMedS methods.
+@param maxIters Parameter used for RANSAC. It is the maximum number of iterations.
+@param seed Parameter used for RANSAC. Seed value of the (pseudo-)random number generator used 
+inside the RANSAC.
 
 This function estimates essential matrix based on the five-point algorithm solver in @cite Nister03 .
 @cite SteweniusCFS is also a related. The epipolar geometry is described by the following equation:
@@ -1980,6 +1983,9 @@ point localization, image resolution, and the image noise.
 confidence (probability) that the estimated matrix is correct.
 @param mask Output array of N elements, every element of which is set to 0 for outliers and to 1
 for the other points. The array is computed only in the RANSAC and LMedS methods.
+@param maxIters Parameter used for RANSAC. It is the maximum number of iterations.
+@param seed Parameter used for RANSAC. Seed value of the (pseudo-)random number generator used 
+inside the RANSAC.
 
 This function differs from the one above that it computes camera matrix from focal length and
 principal point:
